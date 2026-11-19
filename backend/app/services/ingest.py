@@ -62,6 +62,7 @@ def run_batch() -> dict:
             )
             if conn.execute("SELECT changes()").fetchone()[0]:
                 written += 1
+                # 起止与末击点变更由库层触发器同事务重算停留分桶。
                 conn.execute(
                     """
                     UPDATE sessions
@@ -73,32 +74,32 @@ def run_batch() -> dict:
                     """,
                     (hit["event_ts"], hit["event_ts"], sid),
                 )
-                ids = [
-                    r["id"]
-                    for r in conn.execute(
-                        "SELECT id FROM hits WHERE session_id=? ORDER BY event_ts, id",
-                        (sid,),
-                    ).fetchall()
-                ]
-                sess_row = conn.execute(
-                    "SELECT * FROM sessions WHERE id=?", (sid,)
-                ).fetchone()
-                conn.execute(
-                    """
-                    INSERT INTO session_proofs(
-                      session_id, visitor_id, hit_ids_json, hit_count, started_at, ended_at, created_at
-                    ) VALUES (?,?,?,?,?,?,?)
-                    """,
-                    (
-                        sid,
-                        vid,
-                        json.dumps(ids, ensure_ascii=False),
-                        sess_row["hit_count"],
-                        sess_row["started_at"],
-                        sess_row["ended_at"],
-                        _now(),
-                    ),
-                )
+            ids = [
+                r["id"]
+                for r in conn.execute(
+                    "SELECT id FROM hits WHERE session_id=? ORDER BY event_ts, id",
+                    (sid,),
+                ).fetchall()
+            ]
+            sess_row = conn.execute(
+                "SELECT * FROM sessions WHERE id=?", (sid,)
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT INTO session_proofs(
+                  session_id, visitor_id, hit_ids_json, hit_count, started_at, ended_at, created_at
+                ) VALUES (?,?,?,?,?,?,?)
+                """,
+                (
+                    sid,
+                    vid,
+                    json.dumps(ids, ensure_ascii=False),
+                    sess_row["hit_count"],
+                    sess_row["started_at"],
+                    sess_row["ended_at"],
+                    _now(),
+                ),
+            )
         report = {"batch_id": batch_id, "written": written, "input": len(hits)}
         conn.execute(
             "INSERT OR REPLACE INTO ingest_batches(id, created_at, report_json) VALUES (?,?,?)",

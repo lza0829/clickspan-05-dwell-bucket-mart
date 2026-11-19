@@ -1,6 +1,7 @@
 import json
 
 from app.db import FIXTURES_DIR, connect
+from app.modules import dwell_bucket_mart as dwell
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -64,15 +65,18 @@ CREATE TABLE IF NOT EXISTS session_proofs (
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
+    conn.executescript(dwell.DDL)
     row = conn.execute("SELECT value FROM settings WHERE key='idle_timeout_sec'").fetchone()
     if not row:
         conn.execute(
             "INSERT INTO settings(key, value) VALUES ('idle_timeout_sec', ?)",
             ("1800",),
         )
+    dwell.ensure_defaults(conn)
     n = conn.execute("SELECT COUNT(*) AS c FROM visitors").fetchone()["c"]
     if n == 0:
         _seed_fixtures(conn)
+    dwell.backfill(conn)
     conn.commit()
     conn.close()
 

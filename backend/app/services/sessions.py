@@ -1,3 +1,17 @@
+from app.modules import dwell_bucket_mart as dwell
+
+
+def _dwell_fields(conn, session_id: str) -> dict:
+    fact = dwell.fact_dict(conn, session_id)
+    if not fact:
+        return {"dwell_sec": None, "dwell_bucket": None, "dwell": None}
+    return {
+        "dwell_sec": fact["dwell_sec"],
+        "dwell_bucket": fact["bucket_name"],
+        "dwell": fact,
+    }
+
+
 def list_sessions(conn, visitor_id: str | None = None):
     if visitor_id:
         rows = conn.execute(
@@ -15,7 +29,12 @@ def list_sessions(conn, visitor_id: str | None = None):
             FROM sessions ORDER BY started_at
             """
         ).fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for row in rows:
+        item = dict(row)
+        item.update(_dwell_fields(conn, item["id"]))
+        out.append(item)
+    return out
 
 
 def session_detail(conn, session_id: str):
@@ -38,4 +57,5 @@ def session_detail(conn, session_id: str):
         "session": dict(sess),
         "hits": [dict(h) for h in hits],
         "proof": dict(proof) if proof else None,
+        "dwell": _dwell_fields(conn, session_id),
     }
